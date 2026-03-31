@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# User preferences (contains local folder paths)
+~/.photo_copier.json
