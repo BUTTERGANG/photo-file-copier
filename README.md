@@ -1,12 +1,12 @@
 # Photo File Copier
 
-A lightweight macOS desktop app for photographers to copy selects from a shoot folder to an output folder — using filenames, shot numbers, or number ranges pasted directly from Apple Notes.
+A lightweight macOS desktop app for photographers to copy selects from a shoot folder to an output folder — either from a pasted file list or by copying all supported media files in the source folder(s).
 
 ---
 
 ## What It Does
 
-When reviewing a shoot you typically jot down the keeper shot numbers in Apple Notes (e.g. `1765`, `1772`, `1801`). This app takes that list and finds the matching files anywhere inside your source folder(s), then copies them cleanly to an output folder — no duplicates, no manual dragging.
+When reviewing a shoot you can either paste keeper shot numbers from Apple Notes (e.g. `1765`, `1772`, `1801`) or copy every supported media file from your source folder(s). The app copies files cleanly to an output folder — no duplicates, no manual dragging.
 
 ---
 
@@ -49,9 +49,14 @@ Click **+ Add Folder** to add the folder(s) where your photo files live. You can
 
 Click **Browse…** next to Output Folder to choose where copies will be saved. This also persists.
 
-### 3 — Paste your file list
+### 3 — Choose copy mode
 
-Click in the **Files to Copy** box and paste your list from Apple Notes. Three input formats are supported on each line:
+You can use either mode:
+
+- **From file list** — paste names/numbers/ranges in the Files to Copy box
+- **Copy all supported files in source folder(s)** — ignore the list and bulk copy supported media
+
+When using **From file list**, the following input formats are supported on each line:
 
 | Format | Example | What it does |
 |---|---|---|
@@ -63,21 +68,42 @@ You can mix all three formats in the same list.
 
 > **Ranges:** Regular hyphens, en-dashes, and em-dashes all work — Apple Notes sometimes auto-converts hyphens to em-dashes and the app handles this transparently.
 
-### 4 — Click Copy Files
+### 4 — Optional: organize output folders
+
+Enable **Organize by file type (subfolders)** to sort copies into extension folders on the first pass:
+
+- `_MG_1765.JPG` → `JPG/_MG_1765.JPG`
+- `_MG_1765.CR3` → `CR3/_MG_1765.CR3`
+- `clip_1765.MP4` → `MP4/clip_1765.MP4`
+- files with no extension → `NO_EXT/<filename>`
+
+Optional: enable **Prefix date in type folders** to group by modified date first, then file type (`M-D-YY/TYPE`):
+
+- `_MG_1765.JPG` → `1-2-34/JPG/_MG_1765.JPG`
+- `_MG_1765.CR3` → `1-2-34/CR3/_MG_1765.CR3`
+
+### 5 — Click Copy Files
 
 The progress bar fills as each file is processed. The status log updates in real time with colour-coded results:
 
 - **Green ✓** — copied successfully
-- **Orange –** — not found in any source folder
-- **Gray ↩** — already exists in output folder, skipped
+- **Orange –** — not found in any source folder (file-list mode)
+- **Gray ↩** — already exists at destination, skipped
 - **Red ✗** — file found but copy failed (permissions, disk full, etc.)
 
-### 5 — After the run
+### 6 — Option behavior by mode
+
+- **Search subfolders** applies to both modes.
+- **Copy all matching formats** applies to **From file list** mode only.
+- **Organize by file type (subfolders)** applies to both modes.
+- **Prefix date in type folders** applies only when **Organize by file type** is enabled, and uses file modified date.
+
+### 7 — After the run
 
 Two buttons appear in the status log header:
 
 - **Open in Finder** — opens the output folder directly in Finder
-- **Copy Missing List** — if any files were not found, copies their names to the clipboard so you can paste them back into Notes or investigate in Finder
+- **Copy Missing List** — appears when file-list mode has missing entries
 
 ---
 
@@ -101,13 +127,13 @@ Canon cameras (like the R7) save files as `_MG_1765.CR3`. When you type just `17
 
 ## Duplicate Handling
 
-If a file with the same name already exists in the output folder it is **skipped** (not overwritten, not renamed). This makes it safe to run the same list multiple times — previously copied files are left untouched.
+If a file with the same destination path already exists it is **skipped** (not overwritten, not renamed). With organization off, this is the output root folder. With type organization on, this is the type subfolder (for example `JPG/_MG_1765.JPG`). With date-prefix enabled, this is the nested date/type path (for example `1-2-34/JPG/_MG_1765.JPG`). This makes it safe to run the same list multiple times — previously copied files are left untouched.
 
 ---
 
 ## Preferences
 
-Source folders and the output folder path are saved automatically to `~/.photo_copier.json` and restored the next time you open the app.
+Source folders, output folder path, and copy options are saved automatically to `~/.photo_copier.json` and restored the next time you open the app.
 
 ---
 

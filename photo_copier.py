@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import threading
+from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from pathlib import Path
@@ -59,7 +60,7 @@ FONT_PATH   = ("Helvetica Neue", 11)
 FONT_SMALL  = ("Helvetica Neue", 10)
 
 PLACEHOLDER = (
-    "Paste filenames here — one per line\n"
+    "Paste filenames here — one per line or comma-separated\n"
     "Full name:  _MG_1765.JPG    Shot number:  1765\n"
     "Range:  1765-1772  (copies all shots in that range)"
 )
@@ -142,15 +143,21 @@ class PhotoCopier(tk.Tk):
                 self.out_var.set(out)
             if prefs.get("all_formats") is not None:
                 self.all_formats_var.set(prefs["all_formats"])
+            if prefs.get("organize_by_type") is not None:
+                self.organize_by_type_var.set(prefs["organize_by_type"])
+            if prefs.get("date_prefix_in_type_folder") is not None:
+                self.date_prefix_var.set(prefs["date_prefix_in_type_folder"])
         except Exception:
             pass
 
     def _save_prefs(self):
         try:
             prefs = {
-                "sources":     self._src_paths,
-                "output":      self.out_var.get(),
-                "all_formats": self.all_formats_var.get(),
+                "sources":                    self._src_paths,
+                "output":                     self.out_var.get(),
+                "all_formats":                self.all_formats_var.get(),
+                "organize_by_type":           self.organize_by_type_var.get(),
+                "date_prefix_in_type_folder": self.date_prefix_var.get(),
             }
             PREFS_FILE.write_text(json.dumps(prefs))
         except Exception:
@@ -260,13 +267,40 @@ class PhotoCopier(tk.Tk):
         clear_btn = tk.Label(list_hdr, text="Clear", font=FONT_HINT,
                              bg=CARD, fg=BLUE, cursor="hand2")
         clear_btn.pack(side="right")
-        clear_btn.bind("<ButtonRelease-1>", lambda _: (
-            self.file_box.delete("1.0", "end"), self._show_placeholder()))
+        clear_btn.bind("<ButtonRelease-1>", self._clear_file_list)
         clear_btn.bind("<Enter>", lambda _: clear_btn.config(fg=BLUE_HOV))
         clear_btn.bind("<Leave>", lambda _: clear_btn.config(fg=BLUE))
         tk.Label(list_hdr,
-                 text="name, number, or range  e.g. 1765-1772",
+                 text="one per line or comma-separated  e.g. 1765-1772",
                  font=FONT_SMALL, bg=CARD, fg=MUTED).pack(side="right", padx=(0, 12))
+
+        mode_row = tk.Frame(list_card, bg=CARD)
+        mode_row.pack(fill="x", pady=(0, 8))
+        self.copy_mode_var = tk.StringVar(value="list")
+        tk.Radiobutton(
+            mode_row,
+            text="  From file list",
+            variable=self.copy_mode_var,
+            value="list",
+            command=self._on_mode_change,
+            font=FONT_HINT,
+            bg=CARD, fg=MUTED,
+            activebackground=CARD, activeforeground=TEXT,
+            selectcolor=CARD,
+            relief="flat", cursor="hand2",
+        ).pack(side="left")
+        tk.Radiobutton(
+            mode_row,
+            text="  Copy all supported files in source folder(s)",
+            variable=self.copy_mode_var,
+            value="folder",
+            command=self._on_mode_change,
+            font=FONT_HINT,
+            bg=CARD, fg=MUTED,
+            activebackground=CARD, activeforeground=TEXT,
+            selectcolor=CARD,
+            relief="flat", cursor="hand2",
+        ).pack(side="left", padx=(16, 0))
 
         txt_border = tk.Frame(list_card, bg=ENTRY_BD)
         txt_border.pack(fill="both", expand=True)
@@ -307,7 +341,7 @@ class PhotoCopier(tk.Tk):
         ).pack(side="left")
 
         self.all_formats_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(
+        self._all_formats_chk = tk.Checkbutton(
             opt_row,
             text="  Copy all matching formats",
             variable=self.all_formats_var,
@@ -317,7 +351,36 @@ class PhotoCopier(tk.Tk):
             selectcolor=CARD,
             relief="flat", cursor="hand2",
             command=self._save_prefs,
-        ).pack(side="left", padx=(16, 0))
+        )
+        self._all_formats_chk.pack(side="left", padx=(16, 0))
+
+        self.organize_by_type_var = tk.BooleanVar(value=False)
+        self._organize_by_type_chk = tk.Checkbutton(
+            opt_row,
+            text="  Organize by file type (subfolders)",
+            variable=self.organize_by_type_var,
+            font=FONT_HINT,
+            bg=BG, fg=MUTED,
+            activebackground=BG, activeforeground=TEXT,
+            selectcolor=CARD,
+            relief="flat", cursor="hand2",
+            command=lambda: (self._on_mode_change(), self._save_prefs()),
+        )
+        self._organize_by_type_chk.pack(side="left", padx=(16, 0))
+
+        self.date_prefix_var = tk.BooleanVar(value=False)
+        self._date_prefix_chk = tk.Checkbutton(
+            opt_row,
+            text="  Prefix date in type folders",
+            variable=self.date_prefix_var,
+            font=FONT_HINT,
+            bg=BG, fg=MUTED,
+            activebackground=BG, activeforeground=TEXT,
+            selectcolor=CARD,
+            relief="flat", cursor="hand2",
+            command=self._save_prefs,
+        )
+        self._date_prefix_chk.pack(side="left", padx=(16, 0))
 
         # ── Copy Files button ──────────────────────────────────────────────
         btn_wrap = tk.Frame(self, bg=BG)
@@ -380,6 +443,8 @@ class PhotoCopier(tk.Tk):
         self.log_box.tag_config("err",  foreground=LOG_ERR)
         self.log_box.tag_config("skip", foreground="#636366")
         self.log_box.tag_config("dim",  foreground=LOG_DIM)
+
+        self._on_mode_change()
 
     # ── Scrollable source list callbacks ──────────────────────────────────────
     def _on_src_list_configure(self, _=None):
@@ -549,6 +614,45 @@ class PhotoCopier(tk.Tk):
                     and f.suffix.lower() in IMAGE_EXTS
                     and pattern.search(f.stem)]
 
+    def _date_prefix_for_found(self, found: Path):
+        try:
+            dt = datetime.fromtimestamp(found.stat().st_mtime)
+            return f"{dt.month}-{dt.day}-{dt:%y}"
+        except Exception:
+            return None
+
+    def _destination_for_found(self, found: Path, out_path: Path, organize_by_type: bool):
+        if not organize_by_type:
+            return out_path / found.name
+        ext_folder = found.suffix[1:].upper() if found.suffix else "NO_EXT"
+        if self.date_prefix_var.get():
+            prefix = self._date_prefix_for_found(found)
+            if prefix:
+                return out_path / prefix / ext_folder / found.name
+        return out_path / ext_folder / found.name
+
+    def _iter_supported_files(self, root: Path):
+        files = root.rglob("*") if self.recursive_var.get() else root.iterdir()
+        for f in files:
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTS:
+                yield f
+
+    def _collect_supported_in_sources(self):
+        results = []
+        seen = set()
+        for src_str in self._src_paths:
+            root = Path(src_str)
+            for f in self._iter_supported_files(root):
+                try:
+                    key = f.resolve()
+                except Exception:
+                    key = f
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append(f)
+        return results
+
     # ── Progress helpers ──────────────────────────────────────────────────────
     def _progress_reset(self, total):
         self._prog_total = max(total, 1)
@@ -585,6 +689,22 @@ class PhotoCopier(tk.Tk):
     def _maybe_placeholder(self, _=None):
         if not self.file_box.get("1.0", "end").strip():
             self._show_placeholder()
+
+    def _on_mode_change(self):
+        folder_mode = self.copy_mode_var.get() == "folder"
+        self.file_box.config(state="disabled" if folder_mode else "normal")
+        self._all_formats_chk.config(state="disabled" if folder_mode else "normal")
+        organize_on = self.organize_by_type_var.get()
+        self._date_prefix_chk.config(state="normal" if organize_on else "disabled")
+
+    def _clear_file_list(self, _=None):
+        prev_state = self.file_box.cget("state")
+        if prev_state == "disabled":
+            self.file_box.config(state="normal")
+        self.file_box.delete("1.0", "end")
+        self._show_placeholder()
+        if prev_state == "disabled":
+            self.file_box.config(state="disabled")
 
     # ── Open in Finder ────────────────────────────────────────────────────────
     def _open_in_finder(self):
@@ -671,14 +791,8 @@ class PhotoCopier(tk.Tk):
         if not out:
             messagebox.showwarning("Missing Output", "Please select an output folder.")
             return
-        if not raw:
-            messagebox.showwarning("No Files", "Please paste at least one file name.")
-            return
 
-        raw_names = [line.strip() for line in raw.splitlines() if line.strip()]
-        names     = self._expand_names(raw_names)
-        out_path  = Path(out)
-
+        out_path = Path(out)
         bad = [s for s in self._src_paths if not Path(s).is_dir()]
         if bad:
             messagebox.showerror("Bad Source",
@@ -686,39 +800,69 @@ class PhotoCopier(tk.Tk):
                                  "\n".join(bad))
             return
 
+        list_mode = self.copy_mode_var.get() == "list"
+        all_formats = self.all_formats_var.get() if list_mode else False
+        organize_by_type = self.organize_by_type_var.get()
+
+        names = []
+        raw_names = []
+        folder_files = []
+
+        if list_mode:
+            if not raw:
+                messagebox.showwarning("No Files", "Please paste at least one file name.")
+                return
+            raw_names = [
+                token.strip()
+                for line in raw.splitlines()
+                for token in line.split(",")
+                if token.strip()
+            ]
+            names = self._expand_names(raw_names)
+            total = len(names)
+        else:
+            folder_files = self._collect_supported_in_sources()
+            total = len(folder_files)
+
         out_path.mkdir(parents=True, exist_ok=True)
         self._last_out_path = out_path
         self._missing_names = []
         self._last_status   = ""
 
         self._clear_log()
-        self._progress_reset(len(names))
+        self._progress_reset(total)
         self._finder_btn.pack_forget()
         self._copy_missing_btn.pack_forget()
         self._save_log_btn.pack_forget()
         self.status_label.config(text="Running…")
         self._set_copy_btn_state(True)
 
-        expanded_count = len(names) - len(raw_names)
         for src_str in self._src_paths:
             self._log(f"Source  {src_str}", "dim")
         self._log(f"Output  {out_path}", "dim")
-        if self.all_formats_var.get():
-            self._log("Mode    copy all matching formats (RAW + JPEG)", "dim")
-        if expanded_count > 0:
-            self._log(f"Expanded {expanded_count} range entries  →  "
-                      f"{len(names)} total files", "dim")
+        if list_mode:
+            if all_formats:
+                self._log("Mode    copy all matching formats (RAW + JPEG)", "dim")
+            expanded_count = len(names) - len(raw_names)
+            if expanded_count > 0:
+                self._log(f"Expanded {expanded_count} range entries  →  "
+                          f"{len(names)} total files", "dim")
+        else:
+            self._log("Mode    copy all supported files from source folders", "dim")
+            self._log(f"Found   {len(folder_files)} supported file(s)", "dim")
+        if organize_by_type:
+            self._log("Mode    organize output by extension folders", "dim")
+            if self.date_prefix_var.get():
+                self._log("Mode    prefix date in type folders (file modified date)", "dim")
         self._log(f"{'─' * 60}", "dim")
 
         self._stop_event.clear()
-        self._copy_thread = threading.Thread(
-            target=self._run_copy,
-            args=(names, out_path, self.all_formats_var.get()),
-            daemon=True,
-        )
+        target = self._run_copy if list_mode else self._run_copy_folder
+        args = (names, out_path, all_formats, organize_by_type) if list_mode else (folder_files, out_path, organize_by_type)
+        self._copy_thread = threading.Thread(target=target, args=args, daemon=True)
         self._copy_thread.start()
 
-    def _run_copy(self, names, out_path, all_formats):
+    def _run_copy(self, names, out_path, all_formats, organize_by_type):
         """Background thread — copies files and posts UI updates via after()."""
         def ui(fn, *args, **kw):
             self.after(0, lambda: fn(*args, **kw))
@@ -747,15 +891,21 @@ class PhotoCopier(tk.Tk):
                 missing += 1
             else:
                 for found in found_files:
-                    dest = out_path / found.name
+                    dest = self._destination_for_found(found, out_path, organize_by_type)
+                    rel_dest = dest.relative_to(out_path)
                     if dest.exists():
-                        ui(self._log, f"  ↩  ALREADY EXISTS   {found.name}", "skip")
+                        shown = str(rel_dest) if organize_by_type else found.name
+                        ui(self._log, f"  ↩  ALREADY EXISTS   {shown}", "skip")
                         skipped += 1
                     else:
                         try:
+                            dest.parent.mkdir(parents=True, exist_ok=True)
                             shutil.copy2(found, dest)
-                            label = found.name if found.name != bare else bare
-                            ui(self._log, f"  ✓  {label}", "ok")
+                            if organize_by_type:
+                                ui(self._log, f"  ✓  {rel_dest}", "ok")
+                            else:
+                                label = found.name if found.name != bare else bare
+                                ui(self._log, f"  ✓  {label}", "ok")
                             copied += 1
                         except Exception as e:
                             ui(self._log, f"  ✗  {found.name}  ({e})", "err")
@@ -765,6 +915,40 @@ class PhotoCopier(tk.Tk):
 
         self.after(0, lambda: self._finish_copy(
             copied, skipped, missing, errors, cancelled))
+
+    def _run_copy_folder(self, files, out_path, organize_by_type):
+        def ui(fn, *args, **kw):
+            self.after(0, lambda: fn(*args, **kw))
+
+        copied = skipped = errors = 0
+        cancelled = False
+
+        for i, found in enumerate(files, 1):
+            if self._stop_event.is_set():
+                cancelled = True
+                ui(self._log, f"{'─' * 60}", "dim")
+                ui(self._log, "  ⊘  Cancelled", "err")
+                break
+
+            dest = self._destination_for_found(found, out_path, organize_by_type)
+            rel_dest = dest.relative_to(out_path)
+            if dest.exists():
+                shown = str(rel_dest) if organize_by_type else found.name
+                ui(self._log, f"  ↩  ALREADY EXISTS   {shown}", "skip")
+                skipped += 1
+            else:
+                try:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(found, dest)
+                    ui(self._log, f"  ✓  {rel_dest if organize_by_type else found.name}", "ok")
+                    copied += 1
+                except Exception as e:
+                    ui(self._log, f"  ✗  {found.name}  ({e})", "err")
+                    errors += 1
+
+            ui(self._progress_step, i)
+
+        self.after(0, lambda: self._finish_copy(copied, skipped, 0, errors, cancelled))
 
     def _finish_copy(self, copied, skipped, missing, errors, cancelled):
         """Called on the main thread when the copy thread finishes or is cancelled."""
