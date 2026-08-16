@@ -83,6 +83,27 @@ You can mix all three formats in the same list.
 | Organize by file type (subfolders) | Both modes | Sorts copies into extension-based folders (`JPG/`, `CR3/`, etc.) |
 | Prefix date in type folders | Organize only | Groups by modified date before type (`1-2-34/JPG/…`) |
 
+### Verify before erasing originals
+
+After copying, click **Verify Transfer**. The app compares every source and destination file by size and SHA-256 checksum. Only when every file matches does it show:
+
+> **The originals are safe to erase from the card.**
+
+If anything is missing, changed, or unreadable, the app clearly says **Do not erase originals** and reports the problem in the status log. The app never deletes files from the card automatically; erase them from the camera only after a successful verification.
+
+### Review before copying
+
+Click **Review** before a large transfer to run a non-destructive preflight check. The review reports:
+
+- Number of files selected
+- Estimated total size
+- File-type breakdown (`JPG`, `CR3`, `MP4`, etc.)
+- Files that already exist at the destination and will be skipped
+- Requested files that were not found
+- Whether the destination has enough free space
+
+Warnings are shown before copying begins; the review never modifies files. The live status log also records the review summary.
+
 ### Click Copy Files
 
 The dominant **Copy Files** button shows a dynamic summary of what will happen (e.g. "2 source folders · output set · copying all files"). As files are processed:
@@ -96,7 +117,12 @@ After the run, action buttons appear in the status bar:
 
 - **Open in Finder** — opens the output folder directly in Finder
 - **Copy Missing List** — appears when file-list mode has entries that weren't found
+- **Copy Error Report** — appears when a copy fails; copies the failed file, destination, error category, details, and suggested fix to the clipboard
 - **Save Log…** — exports the status log to a text file
+
+### Understanding errors
+
+The app never silently ignores a failed copy. Failed files are marked in red in the live status log and grouped into an error report. Common problems are identified as **Permission denied**, **File no longer exists**, **Disk full**, or **Destination is a folder**, with a suggested next step. Less common failures are reported as **Copy failed** with the original system detail preserved. Missing files are tracked separately because they are not copy errors.
 
 ---
 

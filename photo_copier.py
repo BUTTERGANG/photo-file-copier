@@ -4,6 +4,7 @@ Photo File Copier
 Paste a list of filenames, pick source and output folders, copy the files.
 """
 
+import hashlib
 import json
 import re
 import shutil
@@ -121,9 +122,11 @@ class PhotoCopier(tk.Tk):
         self.minsize(640, 700)
         self._src_paths          = []
         self._missing_names      = []
+        self._errors             = []
         self._last_out_path      = None
         self._last_status        = ""
         self._copy_thread        = None
+        self._verify_thread       = None
         self._stop_event         = threading.Event()
         self._clip_job           = None
         self._placeholder_active = False
@@ -399,6 +402,20 @@ class PhotoCopier(tk.Tk):
                                       font=FONT_HINT, bg=BG, fg=MUTED,
                                       anchor="w")
         self._copy_summary.pack(fill="x", pady=(0, 6))
+        action_row = tk.Frame(btn_wrap, bg=BG)
+        action_row.pack(fill="x", pady=(0, 6))
+        self._review_btn = FlatButton(
+            action_row, "  Review  ", self._review_copy,
+            bg_n=BTN2_BG, bg_h=BTN2_HOV, bg_p=BTN2_PR,
+            fg=TEXT, font=FONT_BTN2, padx=0, pady=9,
+        )
+        self._review_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self._verify_btn = FlatButton(
+            action_row, "  Verify Transfer  ", self._verify_transfer,
+            bg_n=BTN2_BG, bg_h=BTN2_HOV, bg_p=BTN2_PR,
+            fg=TEXT, font=FONT_BTN2, padx=0, pady=9,
+        )
+        self._verify_btn.pack(side="left", fill="x", expand=True, padx=(4, 0))
         self._copy_btn = FlatButton(
             btn_wrap, "  Copy Files  ", self._copy_files,
             bg_n=BLUE, bg_h=BLUE_HOV, bg_p=BLUE_PR,
@@ -434,6 +451,7 @@ class PhotoCopier(tk.Tk):
         # Action buttons in log header — hidden until relevant
         self._finder_btn       = self._log_hdr_btn(log_hdr, "  Open in Finder  ",     self._open_in_finder,             BLUE)
         self._copy_missing_btn = self._log_hdr_btn(log_hdr, "  Copy Missing List  ",  self._copy_missing_to_clipboard,  LOG_MISS)
+        self._error_report_btn = self._log_hdr_btn(log_hdr, "  Copy Error Report  ",  self._copy_error_report,           LOG_ERR)
         self._save_log_btn     = self._log_hdr_btn(log_hdr, "  Save Log…  ",           self._save_log,                   MUTED)
 
         self.status_label = tk.Label(log_hdr, text="",
@@ -775,6 +793,48 @@ class PhotoCopier(tk.Tk):
         self.clipboard_append("\n".join(self._missing_names))
         self._flash_status("Copied to clipboard!")
 
+    # ── Error reporting ───────────────────────────────────────────────────────
+    def _error_category(self, error):
+        if isinstance(error, PermissionError):
+            return "Permission denied", "Check folder permissions or grant Files and Folders access in System Settings."
+        if isinstance(error, FileNotFoundError):
+            return "File no longer exists", "Check that the source drive is still connected and try again."
+        if isinstance(error, OSError) and getattr(error, "errno", None) == 28:
+            return "Disk full", "Free space on the destination drive and try again."
+        if isinstance(error, IsADirectoryError):
+            return "Destination is a folder", "Choose a different output folder or remove the conflicting folder."
+        return "Copy failed", "Check the source, destination, available space, and permissions."
+
+    def _record_error(self, found, dest, error, ui):
+        category, remedy = self._error_category(error)
+        detail = str(error) or error.__class__.__name__
+        self._errors.append({
+            "file": found.name,
+            "destination": str(dest),
+            "category": category,
+            "detail": detail,
+            "remedy": remedy,
+        })
+        ui(self._log, f"  ✗  {found.name}  [{category}]", "err")
+        ui(self._log, f"       {detail}", "err")
+
+    def _copy_error_report(self):
+        if not self._errors:
+            return
+        lines = ["Photo File Copier — Error Report", "=" * 36, ""]
+        for i, error in enumerate(self._errors, 1):
+            lines.extend([
+                f"Error {i}: {error['category']}",
+                f"File: {error['file']}",
+                f"Destination: {error['destination']}",
+                f"Details: {error['detail']}",
+                f"Suggested fix: {error['remedy']}",
+                "",
+            ])
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        self._flash_status("Error report copied to clipboard!")
+
     # ── Save log to file ──────────────────────────────────────────────────────
     def _save_log(self):
         path = filedialog.asksaveasfilename(
@@ -822,10 +882,238 @@ class PhotoCopier(tk.Tk):
         self._stop_event.set()
         self._copy_btn.reconfigure(text="  Cancelling…  ")
 
+    # ── Preflight review ──────────────────────────────────────────────────────
+    @staticmethod
+    def _format_bytes(size):
+        units = ("B", "KB", "MB", "GB", "TB")
+        value = float(size)
+        for unit in units:
+            if value < 1024 or unit == units[-1]:
+                return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+            value /= 1024
+        return f"{value:.1f} TB"
+
+    def _review_copy(self):
+        if self._copy_thread and self._copy_thread.is_alive():
+            return
+        if not self._src_paths:
+            messagebox.showwarning("No Source Folders", "Please add at least one source folder.")
+            return
+        out = self.out_var.get().strip()
+        if not out:
+            messagebox.showwarning("Missing Output", "Please select an output folder.")
+            return
+        bad = [s for s in self._src_paths if not Path(s).is_dir()]
+        if bad:
+            messagebox.showerror("Bad Source", "These source folders were not found:\n" + "\n".join(bad))
+            return
+
+        list_mode = self.copy_mode_var.get() == "list"
+        all_formats = self.all_formats_var.get() if list_mode else False
+        organize_by_type = self.organize_by_type_var.get()
+        files = []
+        missing = []
+        names = []
+        if list_mode:
+            raw = "" if self._placeholder_active else self.file_box.get("1.0", "end").strip()
+            if not raw:
+                messagebox.showwarning("No Files", "Please paste at least one file name.")
+                return
+            raw_names = [token.strip() for line in raw.splitlines() for token in line.split(",") if token.strip()]
+            names = self._expand_names(raw_names)
+            seen = set()
+            for name in names:
+                found_files = self._find_all_in_sources(Path(name).name) if all_formats else []
+                if not all_formats:
+                    found = self._find_in_sources(Path(name).name)
+                    found_files = [found] if found else []
+                if not found_files:
+                    missing.append(Path(name).name)
+                for found in found_files:
+                    key = str(found.resolve())
+                    if key not in seen:
+                        seen.add(key)
+                        files.append(found)
+        else:
+            files = self._collect_supported_in_sources()
+
+        out_path = Path(out)
+        type_sizes = {}
+        total_bytes = 0
+        collisions = 0
+        unreadable = 0
+        for found in files:
+            try:
+                size = found.stat().st_size
+            except OSError:
+                size = 0
+                unreadable += 1
+            total_bytes += size
+            ext = found.suffix[1:].upper() if found.suffix else "NO_EXT"
+            type_sizes[ext] = type_sizes.get(ext, 0) + size
+            if self._destination_for_found(found, out_path, organize_by_type).exists():
+                collisions += 1
+
+        try:
+            free_bytes = shutil.disk_usage(out_path if out_path.exists() else out_path.parent).free
+        except OSError:
+            free_bytes = None
+        warnings = []
+        if free_bytes is not None and total_bytes > free_bytes:
+            warnings.append(f"Not enough free space: need {self._format_bytes(total_bytes)}, have {self._format_bytes(free_bytes)}.")
+        if missing:
+            warnings.append(f"{len(missing)} requested file(s) were not found.")
+        if collisions:
+            warnings.append(f"{collisions} file(s) already exist and will be skipped.")
+        if unreadable:
+            warnings.append(f"{unreadable} file(s) could not be measured and may fail during copying.")
+
+        breakdown = "\n".join(
+            f"  {ext:<8} {self._format_bytes(size)}"
+            for ext, size in sorted(type_sizes.items(), key=lambda item: item[1], reverse=True)
+        ) or "  No supported files found"
+        source_label = f"{len(self._src_paths)} source folder(s)"
+        mode_label = "file-list selection" if list_mode else "all supported source files"
+        warning_text = "\n\nWarnings:\n" + "\n".join(f"• {w}" for w in warnings) if warnings else "\n\nNo blocking issues found."
+        review = (
+            f"Review copy\n\n{source_label}\nMode: {mode_label}\n"
+            f"Files to copy: {len(files)}\nTotal size: {self._format_bytes(total_bytes)}\n"
+            f"Destination collisions: {collisions}\n\nBy file type:\n{breakdown}"
+            f"{warning_text}\n\nChoose Copy Files to begin."
+        )
+        self._copy_summary.config(
+            text=f"{len(files)} files · {self._format_bytes(total_bytes)} · {len(type_sizes)} file types"
+        )
+        self._log("Preflight review", "dim")
+        self._log(f"  Files       {len(files)}", "dim")
+        self._log(f"  Total size  {self._format_bytes(total_bytes)}", "dim")
+        if warnings:
+            for warning in warnings:
+                self._log(f"  ⚠  {warning}", "miss")
+        else:
+            self._log("  ✓  No blocking issues found", "ok")
+        messagebox.showwarning("Review Copy", review) if warnings else messagebox.showinfo("Review Copy", review)
+
+    # ── Transfer verification ────────────────────────────────────────────────
+    @staticmethod
+    def _sha256(path):
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _verification_pairs(self):
+        """Return source/destination pairs for the current transfer settings."""
+        list_mode = self.copy_mode_var.get() == "list"
+        organize_by_type = self.organize_by_type_var.get()
+        pairs = []
+        seen = set()
+        if list_mode:
+            raw = "" if self._placeholder_active else self.file_box.get("1.0", "end").strip()
+            if not raw:
+                return pairs
+            raw_names = [token.strip() for line in raw.splitlines()
+                         for token in line.split(",") if token.strip()]
+            names = self._expand_names(raw_names)
+            for name in names:
+                bare = Path(name).name
+                if self.all_formats_var.get():
+                    found_files = self._find_all_in_sources(bare)
+                else:
+                    found = self._find_in_sources(bare)
+                    found_files = [found] if found else []
+                for found in found_files:
+                    key = str(found.resolve())
+                    if key not in seen:
+                        seen.add(key)
+                        pairs.append((found, self._destination_for_found(
+                            found, Path(self.out_var.get().strip()), organize_by_type)))
+        else:
+            for found in self._collect_supported_in_sources():
+                pairs.append((found, self._destination_for_found(
+                    found, Path(self.out_var.get().strip()), organize_by_type)))
+        return pairs
+
+    def _verify_transfer(self):
+        if self._copy_thread and self._copy_thread.is_alive():
+            messagebox.showwarning("Copy In Progress", "Wait for the copy to finish before verifying it.")
+            return
+        if self._verify_thread and self._verify_thread.is_alive():
+            return
+        if not self._src_paths or not self.out_var.get().strip():
+            messagebox.showwarning("Transfer Not Ready", "Choose source and output folders first.")
+            return
+        pairs = self._verification_pairs()
+        if not pairs:
+            messagebox.showwarning("Nothing to Verify", "No supported files were found for the current transfer.")
+            return
+        self._verify_btn.reconfigure(text="  Verifying…  ")
+        self._review_btn.config(state="disabled")
+        self._copy_btn.config(state="disabled")
+        self._log("Transfer verification started — comparing file sizes and SHA-256 checksums", "dim")
+        self._verify_thread = threading.Thread(
+            target=self._run_verification, args=(pairs,), daemon=True)
+        self._verify_thread.start()
+
+    def _run_verification(self, pairs):
+        verified = missing = mismatched = errors = 0
+        for source, dest in pairs:
+            try:
+                if not source.is_file() or not dest.is_file():
+                    missing += 1
+                    self.after(0, self._log, f"  – MISSING   {dest.name}", "miss")
+                    continue
+                if source.stat().st_size != dest.stat().st_size:
+                    mismatched += 1
+                    self.after(0, self._log, f"  ✗ SIZE MISMATCH   {dest.name}", "err")
+                    continue
+                if self._sha256(source) != self._sha256(dest):
+                    mismatched += 1
+                    self.after(0, self._log, f"  ✗ CHECKSUM MISMATCH   {dest.name}", "err")
+                    continue
+                verified += 1
+            except OSError as error:
+                errors += 1
+                self.after(0, self._log, f"  ✗ VERIFY ERROR   {dest.name} ({error})", "err")
+        self.after(0, self._finish_verification,
+                   verified, missing, mismatched, errors, len(pairs))
+
+    def _finish_verification(self, verified, missing, mismatched, errors, total):
+        self._verify_btn.reconfigure(text="  Verify Transfer  ")
+        self._review_btn.config(state="normal")
+        self._copy_btn.config(state="normal")
+        safe = verified == total and total > 0 and missing == 0 and mismatched == 0 and errors == 0
+        self._log(f"Verification complete — {verified}/{total} verified, "
+                  f"{missing} missing, {mismatched} mismatched, {errors} errors",
+                  "ok" if safe else "err")
+        if safe:
+            self._copy_summary.config(
+                text=f"✓ {verified} files verified · Originals are safe to erase from the card"
+            )
+            messagebox.showinfo(
+                "Transfer Verified",
+                f"All {verified} files match the destination byte-for-byte.\n\n"
+                "The originals are safe to erase from the card."
+            )
+        else:
+            self._copy_summary.config(
+                text=f"Do not erase originals · {verified} verified · "
+                     f"{missing + mismatched + errors} need attention"
+            )
+            messagebox.showwarning(
+                "Verification Needs Attention",
+                f"Verified: {verified}\nMissing: {missing}\n"
+                f"Mismatched: {mismatched}\nErrors: {errors}\n\n"
+                "Do not erase the originals."
+            )
+
     # ── Core copy logic ───────────────────────────────────────────────────────
     def _copy_files(self):
         if self._copy_thread and self._copy_thread.is_alive():
             return  # guard — shouldn't happen since button swaps to Cancel
+        if self._verify_thread and self._verify_thread.is_alive():
+            return
 
         out = self.out_var.get().strip()
         raw = "" if self._placeholder_active else self.file_box.get("1.0", "end").strip()
@@ -873,12 +1161,14 @@ class PhotoCopier(tk.Tk):
         out_path.mkdir(parents=True, exist_ok=True)
         self._last_out_path = out_path
         self._missing_names = []
+        self._errors        = []
         self._last_status   = ""
 
         self._clear_log()
         self._progress_reset(total)
         self._finder_btn.pack_forget()
         self._copy_missing_btn.pack_forget()
+        self._error_report_btn.pack_forget()
         self._save_log_btn.pack_forget()
         self.status_label.config(text="Running…")
         self._set_copy_btn_state(True)
@@ -954,7 +1244,7 @@ class PhotoCopier(tk.Tk):
                                 ui(self._log, f"  ✓  {label}", "ok")
                             copied += 1
                         except Exception as e:
-                            ui(self._log, f"  ✗  {found.name}  ({e})", "err")
+                            self._record_error(found, dest, e, ui)
                             errors += 1
 
             ui(self._progress_step, i)
@@ -989,7 +1279,7 @@ class PhotoCopier(tk.Tk):
                     ui(self._log, f"  ✓  {rel_dest if organize_by_type else found.name}", "ok")
                     copied += 1
                 except Exception as e:
-                    ui(self._log, f"  ✗  {found.name}  ({e})", "err")
+                    self._record_error(found, dest, e, ui)
                     errors += 1
 
             ui(self._progress_step, i)
@@ -1024,6 +1314,8 @@ class PhotoCopier(tk.Tk):
         self._save_log_btn.pack(side="right", padx=(0, 4))
         if self._missing_names:
             self._copy_missing_btn.pack(side="right", padx=(0, 4))
+        if self._errors:
+            self._error_report_btn.pack(side="right", padx=(0, 4))
 
         if cancelled:
             return
