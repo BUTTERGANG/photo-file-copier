@@ -21,25 +21,29 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".cr3", ".cr2", ".raf", ".nef", ".arw",
 # ── Preferences file ──────────────────────────────────────────────────────────
 PREFS_FILE = Path.home() / ".photo_copier.json"
 
-# ── Dark-theme palette ────────────────────────────────────────────────────────
+# ── Dark-theme palette (Apple-inspired) ───────────────────────────────────────
 BG          = "#161618"
-CARD        = "#242426"
-BORDER      = "#3A3A3C"
+CARD        = "#1C1C1E"
+BORDER      = "#38383A"
 HDR_BG      = "#0D0D0F"
 HDR_FG      = "#F2F2F7"
 TEXT        = "#F2F2F7"
-MUTED       = "#AEAEB2"
+MUTED       = "#8E8E93"
 ENTRY_BG    = "#2C2C2E"
-ENTRY_BD    = "#48484A"
-BLUE        = "#0A84FF"
-BLUE_HOV    = "#3395FF"
-BLUE_PR     = "#006FD6"
-BTN2_BG     = "#3A3A3C"
-BTN2_HOV    = "#4A4A4E"
-BTN2_PR     = "#2A2A2C"
+ENTRY_BD    = "#3A3A3C"
+BLUE        = "#007AFF"
+BLUE_HOV    = "#3A8DFF"
+BLUE_PR     = "#0062CC"
+BTN2_BG     = "#38383A"
+BTN2_HOV    = "#48484A"
+BTN2_PR     = "#28282A"
+SEG_INACTIVE = "#2C2C2E"
+SEG_ACTIVE  = "#007AFF"
+SEG_TEXT    = "#F2F2F7"
+SEG_TEXT_INACTIVE = "#8E8E93"
 LOG_BG      = "#0D0D0F"
 LOG_FG      = "#D4D4D4"
-LOG_DIM     = "#6E6E73"
+LOG_DIM     = "#636366"
 LOG_OK      = "#30D158"
 LOG_MISS    = "#FF9F0A"
 LOG_ERR     = "#FF6B6B"
@@ -48,13 +52,17 @@ ROW_ALT     = "#1E1E20"
 RED         = "#FF453A"
 RED_HOV     = "#FF6B61"
 RED_PR      = "#D93025"
+STEP_CIRCLE = "#007AFF"
+STEP_CIRCLE_BG = "#1C1C1E"
 
-FONT_TITLE  = ("Helvetica Neue", 17, "bold")
+FONT_TITLE  = ("Helvetica Neue", 18, "bold")
+FONT_STEP   = ("Helvetica Neue", 13, "bold")
 FONT_HINT   = ("Helvetica Neue", 11)
-FONT_ENTRY  = ("Helvetica Neue", 12)
-FONT_BTN    = ("Helvetica Neue", 13, "bold")
+FONT_ENTRY  = ("Helvetica Neue", 13)
+FONT_BTN    = ("Helvetica Neue", 14, "bold")
 FONT_BTN2   = ("Helvetica Neue", 12)
-FONT_CAPS   = ("Helvetica Neue", 10, "bold")
+FONT_CAPS   = ("Helvetica Neue", 11, "bold")
+FONT_CIRCLE = ("Helvetica Neue", 13, "bold")
 FONT_LOG    = ("Menlo", 11)
 FONT_PATH   = ("Helvetica Neue", 11)
 FONT_SMALL  = ("Helvetica Neue", 10)
@@ -163,12 +171,31 @@ class PhotoCopier(tk.Tk):
         except Exception:
             pass
 
-    # ── Card / entry helpers ──────────────────────────────────────────────────
+    # ── Card / step helpers ───────────────────────────────────────────────────
     def _card(self, parent, padx=16, pady=14):
-        outer = tk.Frame(parent, bg=BORDER)
-        outer.pack(fill="x", padx=20, pady=(0, 10))
-        inner = tk.Frame(outer, bg=CARD, padx=padx, pady=pady)
-        inner.pack(fill="x", padx=1, pady=1)
+        """Layered card — no visible border, just a different background shade."""
+        inner = tk.Frame(parent, bg=CARD, padx=padx, pady=pady)
+        inner.pack(fill="x", padx=20, pady=(0, 10))
+        return inner
+
+    def _step_card(self, parent, step_num, title, padx=16, pady=14):
+        """Card with a numbered circle badge and title in the header row."""
+        inner = tk.Frame(parent, bg=CARD, padx=padx, pady=pady)
+        inner.pack(fill="x", padx=20, pady=(0, 10))
+
+        hdr = tk.Frame(inner, bg=CARD)
+        hdr.pack(fill="x", pady=(0, 8))
+
+        # Numbered circle
+        circle = tk.Frame(hdr, bg=STEP_CIRCLE, width=24, height=24)
+        circle.pack(side="left", padx=(0, 8))
+        circle.pack_propagate(False)
+        tk.Label(circle, text=str(step_num), font=FONT_CIRCLE,
+                 bg=STEP_CIRCLE, fg="white").place(relx=0.5, rely=0.5, anchor="center")
+
+        tk.Label(hdr, text=title, font=FONT_STEP,
+                 bg=CARD, fg=TEXT, anchor="w").pack(side="left")
+
         return inner
 
     def _entry(self, parent, textvariable):
@@ -195,30 +222,22 @@ class PhotoCopier(tk.Tk):
     def _build_ui(self):
 
         # ── Header ────────────────────────────────────────────────────────
-        hdr = tk.Frame(self, bg=HDR_BG, height=60)
+        hdr = tk.Frame(self, bg=HDR_BG, height=52)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="📷", font=("Helvetica Neue", 26),
-                 bg=HDR_BG, fg=BLUE).pack(side="left", padx=(18, 10))
-        col = tk.Frame(hdr, bg=HDR_BG)
-        col.pack(side="left")
-        tk.Label(col, text="Photo File Copier",
-                 font=FONT_TITLE, bg=HDR_BG, fg=HDR_FG, anchor="w").pack(anchor="w")
-        tk.Label(col, text="Copy selected images to an output folder",
-                 font=FONT_HINT, bg=HDR_BG, fg=MUTED, anchor="w").pack(anchor="w")
+        tk.Label(hdr, text="📷", font=("Helvetica Neue", 22),
+                 bg=HDR_BG, fg=BLUE).pack(side="left", padx=(18, 8))
+        tk.Label(hdr, text="Photo File Copier",
+                 font=FONT_TITLE, bg=HDR_BG, fg=HDR_FG, anchor="w").pack(side="left")
 
-        tk.Frame(self, bg=BG, height=14).pack(fill="x")
+        tk.Frame(self, bg=BG, height=12).pack(fill="x")
 
-        # ── Source folders card ────────────────────────────────────────────
-        src_card = self._card(self, pady=14)
+        # ── Step 1 — Source Folders ───────────────────────────────────────
+        src_card = self._step_card(self, 1, "Source Folders", pady=14)
 
-        src_hdr = tk.Frame(src_card, bg=CARD)
-        src_hdr.pack(fill="x", pady=(0, 8))
-        tk.Label(src_hdr, text="SOURCE FOLDERS",
-                 font=FONT_CAPS, bg=CARD, fg=MUTED).pack(side="left")
-        FlatButton(src_hdr, " + Add Folder ", self._add_source,
+        FlatButton(src_card, " + Add Folder ", self._add_source,
                    bg_n=BTN2_BG, bg_h=BTN2_HOV, bg_p=BTN2_PR,
-                   font=FONT_SMALL, padx=4, pady=4).pack(side="right")
+                   font=FONT_SMALL, padx=4, pady=4).pack(anchor="e", pady=(0, 8))
 
         # Scrollable source list — canvas + optional scrollbar
         src_scroll_outer = tk.Frame(src_card, bg=CARD)
@@ -244,10 +263,8 @@ class PhotoCopier(tk.Tk):
                 int(-1 * (e.delta / 120)), "units"))
         self._src_canvas.pack(side="left", fill="x", expand=True)
 
-        # ── Output folder card ─────────────────────────────────────────────
-        out_card = self._card(self, pady=14)
-        tk.Label(out_card, text="OUTPUT FOLDER",
-                 font=FONT_CAPS, bg=CARD, fg=MUTED).pack(anchor="w", pady=(0, 5))
+        # ── Step 2 — Output Folder ────────────────────────────────────────
+        out_card = self._step_card(self, 2, "Output Folder", pady=14)
         out_row = tk.Frame(out_card, bg=CARD)
         out_row.pack(fill="x")
         self.out_var = tk.StringVar()
@@ -257,51 +274,37 @@ class PhotoCopier(tk.Tk):
                    bg_n=BTN2_BG, bg_h=BTN2_HOV, bg_p=BTN2_PR,
                    font=FONT_BTN2, padx=4, pady=6).pack(side="left")
 
-        # ── File list card ─────────────────────────────────────────────────
-        list_card = self._card(self, pady=14)
+        # ── Step 3 — Files to Copy with segmented mode control ────────────
+        list_card = self._step_card(self, 3, "Files to Copy", pady=14)
 
-        list_hdr = tk.Frame(list_card, bg=CARD)
-        list_hdr.pack(fill="x", pady=(0, 6))
-        tk.Label(list_hdr, text="FILES TO COPY",
-                 font=FONT_CAPS, bg=CARD, fg=MUTED).pack(side="left")
-        clear_btn = tk.Label(list_hdr, text="Clear", font=FONT_HINT,
-                             bg=CARD, fg=BLUE, cursor="hand2")
-        clear_btn.pack(side="right")
-        clear_btn.bind("<ButtonRelease-1>", self._clear_file_list)
-        clear_btn.bind("<Enter>", lambda _: clear_btn.config(fg=BLUE_HOV))
-        clear_btn.bind("<Leave>", lambda _: clear_btn.config(fg=BLUE))
-        tk.Label(list_hdr,
-                 text="one per line or comma-separated  e.g. 1765-1772",
-                 font=FONT_SMALL, bg=CARD, fg=MUTED).pack(side="right", padx=(0, 12))
+        # Segmented control: list mode vs folder mode
+        seg_row = tk.Frame(list_card, bg=CARD)
+        seg_row.pack(fill="x", pady=(0, 10))
 
-        mode_row = tk.Frame(list_card, bg=CARD)
-        mode_row.pack(fill="x", pady=(0, 8))
         self.copy_mode_var = tk.StringVar(value="list")
-        tk.Radiobutton(
-            mode_row,
-            text="  From file list",
-            variable=self.copy_mode_var,
-            value="list",
-            command=self._on_mode_change,
-            font=FONT_HINT,
-            bg=CARD, fg=MUTED,
-            activebackground=CARD, activeforeground=TEXT,
-            selectcolor=CARD,
-            relief="flat", cursor="hand2",
-        ).pack(side="left")
-        tk.Radiobutton(
-            mode_row,
-            text="  Copy all supported files in source folder(s)",
-            variable=self.copy_mode_var,
-            value="folder",
-            command=self._on_mode_change,
-            font=FONT_HINT,
-            bg=CARD, fg=MUTED,
-            activebackground=CARD, activeforeground=TEXT,
-            selectcolor=CARD,
-            relief="flat", cursor="hand2",
-        ).pack(side="left", padx=(16, 0))
+        self._seg_list_btn = FlatButton(
+            seg_row, "  From file list  ", lambda: None,
+            bg_n=SEG_ACTIVE, bg_h=SEG_ACTIVE, bg_p=BLUE_PR,
+            fg=SEG_TEXT, font=FONT_BTN2, padx=14, pady=6,
+        )
+        self._seg_list_btn.pack(side="left")
+        self._seg_list_btn.bind("<ButtonRelease-1>",
+                                lambda e: (self.copy_mode_var.set("list"),
+                                           self._on_mode_change()),
+                                "+")
 
+        self._seg_folder_btn = FlatButton(
+            seg_row, "  Copy all files in source folder(s)  ", lambda: None,
+            bg_n=SEG_INACTIVE, bg_h=BTN2_HOV, bg_p=BTN2_PR,
+            fg=SEG_TEXT_INACTIVE, font=FONT_BTN2, padx=14, pady=6,
+        )
+        self._seg_folder_btn.pack(side="left", padx=(0, 0))
+        self._seg_folder_btn.bind("<ButtonRelease-1>",
+                                  lambda e: (self.copy_mode_var.set("folder"),
+                                             self._on_mode_change()),
+                                  "+")
+
+        # Text area for file list
         txt_border = tk.Frame(list_card, bg=ENTRY_BD)
         txt_border.pack(fill="both", expand=True)
         txt_inner = tk.Frame(txt_border, bg=ENTRY_BG)
@@ -325,70 +328,81 @@ class PhotoCopier(tk.Tk):
         self.file_box.bind("<FocusIn>",  self._clear_placeholder)
         self.file_box.bind("<FocusOut>", self._maybe_placeholder)
 
-        # ── Options row ────────────────────────────────────────────────────
-        opt_row = tk.Frame(self, bg=BG)
-        opt_row.pack(fill="x", padx=21, pady=(0, 10))
+        # ── Step 4 — Options (compact, context-aware) ─────────────────────
+        opt_card = self._step_card(self, 4, "Options", pady=12)
+
+        # Row 1: searching
+        row1 = tk.Frame(opt_card, bg=CARD)
+        row1.pack(fill="x", pady=(0, 6))
         self.recursive_var = tk.BooleanVar(value=True)
         tk.Checkbutton(
-            opt_row,
+            row1,
             text="  Search subfolders",
             variable=self.recursive_var,
             font=FONT_HINT,
-            bg=BG, fg=MUTED,
-            activebackground=BG, activeforeground=TEXT,
-            selectcolor=CARD,
+            bg=CARD, fg=MUTED,
+            activebackground=CARD, activeforeground=TEXT,
+            selectcolor=BG,
             relief="flat", cursor="hand2",
         ).pack(side="left")
 
         self.all_formats_var = tk.BooleanVar(value=False)
         self._all_formats_chk = tk.Checkbutton(
-            opt_row,
-            text="  Copy all matching formats",
+            row1,
+            text="  Copy all matching formats (RAW + JPEG)",
             variable=self.all_formats_var,
             font=FONT_HINT,
-            bg=BG, fg=MUTED,
-            activebackground=BG, activeforeground=TEXT,
-            selectcolor=CARD,
+            bg=CARD, fg=MUTED,
+            activebackground=CARD, activeforeground=TEXT,
+            selectcolor=BG,
             relief="flat", cursor="hand2",
             command=self._save_prefs,
         )
-        self._all_formats_chk.pack(side="left", padx=(16, 0))
+        self._all_formats_chk.pack(side="left", padx=(20, 0))
 
+        # Row 2: output organization
+        row2 = tk.Frame(opt_card, bg=CARD)
+        row2.pack(fill="x")
         self.organize_by_type_var = tk.BooleanVar(value=False)
         self._organize_by_type_chk = tk.Checkbutton(
-            opt_row,
+            row2,
             text="  Organize by file type (subfolders)",
             variable=self.organize_by_type_var,
             font=FONT_HINT,
-            bg=BG, fg=MUTED,
-            activebackground=BG, activeforeground=TEXT,
-            selectcolor=CARD,
+            bg=CARD, fg=MUTED,
+            activebackground=CARD, activeforeground=TEXT,
+            selectcolor=BG,
             relief="flat", cursor="hand2",
             command=lambda: (self._on_mode_change(), self._save_prefs()),
         )
-        self._organize_by_type_chk.pack(side="left", padx=(16, 0))
+        self._organize_by_type_chk.pack(side="left")
 
         self.date_prefix_var = tk.BooleanVar(value=False)
         self._date_prefix_chk = tk.Checkbutton(
-            opt_row,
+            row2,
             text="  Prefix date in type folders",
             variable=self.date_prefix_var,
             font=FONT_HINT,
-            bg=BG, fg=MUTED,
-            activebackground=BG, activeforeground=TEXT,
-            selectcolor=CARD,
+            bg=CARD, fg=MUTED,
+            activebackground=CARD, activeforeground=TEXT,
+            selectcolor=BG,
             relief="flat", cursor="hand2",
             command=self._save_prefs,
         )
-        self._date_prefix_chk.pack(side="left", padx=(16, 0))
+        self._date_prefix_chk.pack(side="left", padx=(20, 0))
 
-        # ── Copy Files button ──────────────────────────────────────────────
+        # ── Copy Files — dominant CTA ─────────────────────────────────────
         btn_wrap = tk.Frame(self, bg=BG)
-        btn_wrap.pack(fill="x", padx=20, pady=(0, 8))
+        btn_wrap.pack(fill="x", padx=20, pady=(0, 12))
+        # Summary text above button (dynamic content shown here)
+        self._copy_summary = tk.Label(btn_wrap, text="",
+                                      font=FONT_HINT, bg=BG, fg=MUTED,
+                                      anchor="w")
+        self._copy_summary.pack(fill="x", pady=(0, 6))
         self._copy_btn = FlatButton(
             btn_wrap, "  Copy Files  ", self._copy_files,
             bg_n=BLUE, bg_h=BLUE_HOV, bg_p=BLUE_PR,
-            fg="white", font=FONT_BTN, padx=0, pady=12,
+            fg="white", font=FONT_BTN, padx=0, pady=14,
         )
         self._copy_btn.pack(fill="x")
 
@@ -396,21 +410,25 @@ class PhotoCopier(tk.Tk):
         prog_wrap = tk.Frame(self, bg=BG)
         prog_wrap.pack(fill="x", padx=20, pady=(0, 10))
         self._prog_track = tk.Canvas(prog_wrap, bg=PROG_TRACK,
-                                     height=6, highlightthickness=0)
+                                     height=5, highlightthickness=0)
         self._prog_track.pack(fill="x")
         self._prog_fill = self._prog_track.create_rectangle(
-            0, 0, 0, 6, fill=BLUE, width=0)
+            0, 0, 0, 5, fill=BLUE, width=0)
         self._prog_total = 1
 
         # ── Status log ────────────────────────────────────────────────────
-        log_outer = tk.Frame(self, bg=BORDER)
+        log_outer = tk.Frame(self, bg=BG)
         log_outer.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        log_hdr = tk.Frame(log_outer, bg="#1A1A1C", height=28)
+        # Log header with subtle card treatment
+        log_border = tk.Frame(log_outer, bg=CARD)
+        log_border.pack(fill="both", expand=True)
+
+        log_hdr = tk.Frame(log_border, bg="#151517", height=28)
         log_hdr.pack(fill="x")
         log_hdr.pack_propagate(False)
-        tk.Label(log_hdr, text="STATUS LOG",
-                 font=FONT_CAPS, bg="#1A1A1C", fg=MUTED).pack(
+        tk.Label(log_hdr, text="STATUS",
+                 font=FONT_CAPS, bg="#151517", fg=MUTED).pack(
             side="left", padx=12, pady=5)
 
         # Action buttons in log header — hidden until relevant
@@ -419,10 +437,10 @@ class PhotoCopier(tk.Tk):
         self._save_log_btn     = self._log_hdr_btn(log_hdr, "  Save Log…  ",           self._save_log,                   MUTED)
 
         self.status_label = tk.Label(log_hdr, text="",
-                                     font=FONT_HINT, bg="#1A1A1C", fg=MUTED)
+                                     font=FONT_HINT, bg="#151517", fg=MUTED)
         self.status_label.pack(side="right", padx=12)
 
-        log_body = tk.Frame(log_outer, bg=LOG_BG)
+        log_body = tk.Frame(log_border, bg=LOG_BG)
         log_body.pack(fill="both", expand=True, padx=1, pady=(0, 1))
         log_scroll = tk.Scrollbar(log_body, width=10,
                                   troughcolor=LOG_BG, relief="flat", bd=0)
@@ -502,12 +520,14 @@ class PhotoCopier(tk.Tk):
             self._src_paths.append(folder)
             self._render_source_list()
             self._save_prefs()
+            self._on_mode_change()
 
     def _remove_source(self, path_str):
         if path_str in self._src_paths:
             self._src_paths.remove(path_str)
             self._render_source_list()
             self._save_prefs()
+            self._on_mode_change()
 
     # ── Output folder picker ──────────────────────────────────────────────────
     def _pick_output(self):
@@ -515,6 +535,7 @@ class PhotoCopier(tk.Tk):
         if folder:
             self.out_var.set(folder)
             self._save_prefs()
+            self._on_mode_change()
 
     # ── Range expansion ───────────────────────────────────────────────────────
     def _expand_names(self, names):
@@ -696,6 +717,31 @@ class PhotoCopier(tk.Tk):
         self._all_formats_chk.config(state="disabled" if folder_mode else "normal")
         organize_on = self.organize_by_type_var.get()
         self._date_prefix_chk.config(state="normal" if organize_on else "disabled")
+
+        # Update segmented control styling
+        if folder_mode:
+            self._seg_list_btn.reconfigure(
+                bg_n=SEG_INACTIVE, bg_h=BTN2_HOV, bg_p=BTN2_PR, fg=SEG_TEXT_INACTIVE)
+            self._seg_folder_btn.reconfigure(
+                bg_n=SEG_ACTIVE, bg_h=SEG_ACTIVE, bg_p=BLUE_PR, fg=SEG_TEXT)
+        else:
+            self._seg_list_btn.reconfigure(
+                bg_n=SEG_ACTIVE, bg_h=SEG_ACTIVE, bg_p=BLUE_PR, fg=SEG_TEXT)
+            self._seg_folder_btn.reconfigure(
+                bg_n=SEG_INACTIVE, bg_h=BTN2_HOV, bg_p=BTN2_PR, fg=SEG_TEXT_INACTIVE)
+
+        # Update summary text above the Copy button
+        src_count = len(self._src_paths)
+        out_path = self.out_var.get().strip()
+        parts = []
+        if src_count > 0:
+            parts.append(f"{src_count} source folder{'s' if src_count > 1 else ''}")
+        if out_path:
+            parts.append("output set")
+        if folder_mode and src_count > 0:
+            parts.append("copying all files")
+        summary = "  ·  ".join(parts) if parts else "Set source and output folders above"
+        self._copy_summary.config(text=summary)
 
     def _clear_file_list(self, _=None):
         prev_state = self.file_box.cget("state")

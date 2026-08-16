@@ -41,20 +41,26 @@ python3.11 photo_copier.py
 
 ## How to Use
 
-### 1 — Add source folder(s)
+The interface is organised as a numbered step-by-step flow:
+
+### ❶ — Add source folder(s)
 
 Click **+ Add Folder** to add the folder(s) where your photo files live. You can add multiple — useful when a shoot spans two memory cards or session folders. Added folders persist between sessions.
 
-### 2 — Set the output folder
+A folder summary updates above the Copy button as you add sources.
 
-Click **Browse…** next to Output Folder to choose where copies will be saved. This also persists.
+### ❷ — Set the output folder
 
-### 3 — Choose copy mode
+Click **Browse…** to choose where copies will be saved. This also persists.
 
-You can use either mode:
+### ❸ — Choose copy mode
 
-- **From file list** — paste names/numbers/ranges in the Files to Copy box
-- **Copy all supported files in source folder(s)** — ignore the list and bulk copy supported media
+Use the segmented control to pick either mode:
+
+| Mode | What it does |
+|---|---|
+| **From file list** | Paste specific filenames, shot numbers, or ranges |
+| **Copy all files in source folder(s)** | Bulk-copy every supported media file, ignoring the file list |
 
 When using **From file list**, the following input formats are supported on each line:
 
@@ -68,42 +74,29 @@ You can mix all three formats in the same list.
 
 > **Ranges:** Regular hyphens, en-dashes, and em-dashes all work — Apple Notes sometimes auto-converts hyphens to em-dashes and the app handles this transparently.
 
-### 4 — Optional: organize output folders
+### ❹ — Configure options
 
-Enable **Organize by file type (subfolders)** to sort copies into extension folders on the first pass:
+| Option | Applies to | What it does |
+|---|---|---|
+| Search subfolders | Both modes | Searches recursively through subdirectories |
+| Copy all matching formats (RAW + JPEG) | File list only | When you enter `1765`, copies both `_MG_1765.CR3` and `_MG_1765.JPG` |
+| Organize by file type (subfolders) | Both modes | Sorts copies into extension-based folders (`JPG/`, `CR3/`, etc.) |
+| Prefix date in type folders | Organize only | Groups by modified date before type (`1-2-34/JPG/…`) |
 
-- `_MG_1765.JPG` → `JPG/_MG_1765.JPG`
-- `_MG_1765.CR3` → `CR3/_MG_1765.CR3`
-- `clip_1765.MP4` → `MP4/clip_1765.MP4`
-- files with no extension → `NO_EXT/<filename>`
+### Click Copy Files
 
-Optional: enable **Prefix date in type folders** to group by modified date first, then file type (`M-D-YY/TYPE`):
-
-- `_MG_1765.JPG` → `1-2-34/JPG/_MG_1765.JPG`
-- `_MG_1765.CR3` → `1-2-34/CR3/_MG_1765.CR3`
-
-### 5 — Click Copy Files
-
-The progress bar fills as each file is processed. The status log updates in real time with colour-coded results:
+The dominant **Copy Files** button shows a dynamic summary of what will happen (e.g. "2 source folders · output set · copying all files"). As files are processed:
 
 - **Green ✓** — copied successfully
 - **Orange –** — not found in any source folder (file-list mode)
 - **Gray ↩** — already exists at destination, skipped
 - **Red ✗** — file found but copy failed (permissions, disk full, etc.)
 
-### 6 — Option behavior by mode
-
-- **Search subfolders** applies to both modes.
-- **Copy all matching formats** applies to **From file list** mode only.
-- **Organize by file type (subfolders)** applies to both modes.
-- **Prefix date in type folders** applies only when **Organize by file type** is enabled, and uses file modified date.
-
-### 7 — After the run
-
-Two buttons appear in the status log header:
+After the run, action buttons appear in the status bar:
 
 - **Open in Finder** — opens the output folder directly in Finder
-- **Copy Missing List** — appears when file-list mode has missing entries
+- **Copy Missing List** — appears when file-list mode has entries that weren't found
+- **Save Log…** — exports the status log to a text file
 
 ---
 
@@ -134,6 +127,19 @@ If a file with the same destination path already exists it is **skipped** (not o
 ## Preferences
 
 Source folders, output folder path, and copy options are saved automatically to `~/.photo_copier.json` and restored the next time you open the app.
+
+---
+
+## UI Design
+
+The interface follows Apple design principles — clean, minimal, with a clear visual hierarchy:
+
+- **Dark theme** with layered backgrounds (`#1C1C1E` cards on `#161618` base) and no visible borders
+- **Numbered step cards** guide the user through the workflow (❶ → ❷ → ❸ → ❹)
+- **Segmented control** replaces radio buttons for mode selection, with the active state clearly highlighted in Apple blue (`#007AFF`)
+- **Dynamic summary** above the primary action shows the current configuration at a glance
+- **Context-aware controls** — irrelevant options are dimmed or hidden based on the selected mode
+- **System typography** using Helvetica Neue with a clear size/weight hierarchy
 
 ---
 
