@@ -11,6 +11,7 @@ updated: 2026-11-03
 > **Repo:** photo-file-copier
 > **Feature ref:** SCRUM/FEATURE_LIST_HASH_INDEX.md — F3
 > **Description:** Diff two hash indexes and report exactly what made it to the server and what didn't.
+> **UPDATE 2026-11-03:** drive-index dashboard already does drive-scan-JSON vs server-index compare (`server/app.py`). Scope here: do the compare natively in photo_copier (no manual JSON upload round-trip) and add hash-mismatch detection, which drive-index can't do with 1-MB partial hashes.
 
 ---
 

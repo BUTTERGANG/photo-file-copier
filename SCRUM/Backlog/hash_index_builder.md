@@ -11,6 +11,7 @@ updated: 2026-11-03
 > **Repo:** photo-file-copier
 > **Feature ref:** SCRUM/FEATURE_LIST_HASH_INDEX.md — F1, F2
 > **Description:** Build persistent SHA-256 manifests of a removable drive or mounted server tree, with copy-job-grade progress UI.
+> **UPDATE 2026-11-03:** A prior tool already exists — `BUTTERGANG/drive-index` (also deployed at NAS `/share/CACHEDEV1_DATA/drive-index`). Scope here is the deltas only: full-file SHA-256 (the existing tool uses a 1-MB partial hash), progress-bar UI inside photo_copier, and incremental re-index parity. Don't rebuild what drive-index already does.
 
 ---
 
